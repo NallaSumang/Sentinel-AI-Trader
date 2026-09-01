@@ -1,0 +1,6 @@
+{
+  "name": "Alpaca AI Trading Agent",
+  "description": "Autonomous AI paper trading agent powered by Gemini AI and Alpaca Paper Trading API with real-time news analysis, structured signal generation, and conservative risk management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
