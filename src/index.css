@@ -1,1 +1,51 @@
 @import "tailwindcss";
+
+@theme {
+  --color-light-bg: #fdfdfd;
+  --color-glass-light: rgba(255, 255, 255, 0.75);
+  --color-glass-light-border: rgba(255, 255, 255, 0.6);
+  --color-glass-shadow: rgba(0, 0, 0, 0.05);
+}
+
+body {
+  background-color: var(--color-light-bg);
+  color: #0f172a;
+  /* Ultra premium light mesh/gradient background */
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(253,16%,7%,0.03) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(225,39%,30%,0.03) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(339,49%,30%,0.03) 0, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Custom sleek scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.25);
+}
+
+.glass-panel {
+  background-color: var(--color-glass-light);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-glass-light-border);
+  box-shadow: 0 10px 40px -10px var(--color-glass-shadow), 0 1px 3px rgba(0,0,0,0.02);
+}
+
+.premium-card-hover {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.premium-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 45px -10px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.03);
+}

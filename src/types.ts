@@ -76,11 +76,12 @@ export interface RiskSettings {
 }
 
 export interface ConfigStatus {
-  hasGeminiKey: boolean;
+  hasGroqKey: boolean;
   hasAlpacaKey: boolean;
   isPaperTrading: boolean;
   alpacaBaseUrl: string;
-  geminiModel: string;
+  aiModel: string;
+  aiProvider: string;
   demoMode: boolean;
   missingCredentialsMessage?: string | null;
 }

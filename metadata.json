@@ -1,6 +1,6 @@
 {
-  "name": "Alpaca AI Trading Agent",
-  "description": "Autonomous AI paper trading agent powered by Gemini AI and Alpaca Paper Trading API with real-time news analysis, structured signal generation, and conservative risk management.",
+  "name": "Alpaca Sentinel AI Trader",
+  "description": "Autonomous AI paper trading agent powered by Groq (Llama 3.3 70B) and Alpaca Paper Trading API with real-time news analysis, structured signal generation, and conservative risk management.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

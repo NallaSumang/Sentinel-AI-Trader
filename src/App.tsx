@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { AlertCircle, Key, ExternalLink } from "lucide-react";
+import { AlertCircle, Key, ExternalLink, Check } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { Navbar } from "./components/Navbar";
 import { PipelineVisualizer } from "./components/PipelineVisualizer";
 import { PortfolioMetrics } from "./components/PortfolioMetrics";
@@ -8,9 +9,9 @@ import { AiDecisionCard } from "./components/AiDecisionCard";
 import { RiskAuditPanel } from "./components/RiskAuditPanel";
 import { PositionsAndOrders } from "./components/PositionsAndOrders";
 import { ActivityLogs } from "./components/ActivityLogs";
-import { PythonProjectExplorer } from "./components/PythonProjectExplorer";
 import { CustomCatalystModal } from "./components/CustomCatalystModal";
 import { RiskSettingsView } from "./components/RiskSettingsView";
+import { CliTerminal } from "./components/CliTerminal";
 import {
   NewsItem,
   AiDecision,
@@ -22,8 +23,17 @@ import {
   ConfigStatus,
 } from "./types";
 
+// Helper for safe JSON fetching
+const safeFetchJson = async (url: string, options?: RequestInit) => {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    throw new Error(`HTTP error! status: ${res.status}`);
+  }
+  return res.json();
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "pipeline" | "code" | "settings">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "pipeline" | "code" | "terminal" | "settings">("dashboard");
   const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null);
 
   // Core Data States
@@ -41,6 +51,7 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [isRunningCycle, setIsRunningCycle] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isAutoMode, setIsAutoMode] = useState<boolean>(false);
 
   // Risk Controls State
   const [riskSettings, setRiskSettings] = useState<RiskSettings>({
@@ -58,22 +69,28 @@ export default function App() {
 
   // Modal
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [toast, setToast] = useState<{title: string, desc: string} | null>(null);
+
+  const showToast = useCallback((title: string, desc: string) => {
+    setToast({title, desc});
+    setTimeout(() => setToast(null), 4000);
+  }, []);
 
   const addLog = useCallback((msg: string) => {
     const time = new Date().toLocaleTimeString();
     setLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 49)]);
   }, []);
 
-  // Fetch initial data
+  // Fetch initial data safely
   const fetchData = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const [cfgRes, accRes, posRes, ordRes, newsRes] = await Promise.all([
-        fetch("/api/config-status").then((r) => r.json()),
-        fetch("/api/trader/account").then((r) => r.json()),
-        fetch("/api/trader/positions").then((r) => r.json()),
-        fetch("/api/trader/orders").then((r) => r.json()),
-        fetch("/api/news").then((r) => r.json()),
+        safeFetchJson("/api/config-status"),
+        safeFetchJson("/api/trader/account"),
+        safeFetchJson("/api/trader/positions"),
+        safeFetchJson("/api/trader/orders"),
+        safeFetchJson("/api/news"),
       ]);
 
       setConfigStatus(cfgRes);
@@ -88,7 +105,7 @@ export default function App() {
       }
     } catch (err) {
       console.error("Error fetching data:", err);
-      addLog("Notice: Connected in offline fallback sandbox mode.");
+      addLog("Notice: Connected in offline fallback sandbox mode or backend disconnected.");
     } finally {
       setIsRefreshing(false);
     }
@@ -98,6 +115,49 @@ export default function App() {
     fetchData();
   }, [fetchData]);
 
+  // Listen for purely discretionary manual trades from the Blotter
+  useEffect(() => {
+    const handleManualTrade = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { symbol, qty, side } = customEvent.detail;
+      
+      addLog(`[MANUAL DISCRETIONARY] Submitting ${side.toUpperCase()} order for ${qty}x ${symbol}...`);
+      
+      try {
+        const orderRes = await safeFetchJson("/api/trader/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: symbol,
+            qty: qty,
+            side: side,
+            price: 180.0, // using market price simulation default
+          }),
+        });
+
+        setLastOrderResult(orderRes.order);
+        setAccount(orderRes.account);
+        addLog(
+          `Alpaca Order EXECUTED: ${orderRes.order.id} (${orderRes.order.side.toUpperCase()} ${
+            orderRes.order.qty
+          }x ${orderRes.order.symbol} @ Market)`
+        );
+        showToast(
+          "Market Order Executed",
+          `Successfully routed ${orderRes.order.qty} shares of ${orderRes.order.symbol} at Market.`
+        );
+        fetchData();
+      } catch (err: any) {
+        addLog(`[MANUAL ERROR] Failed to submit order: ${err.message}`);
+      }
+    };
+
+    window.addEventListener("submit-manual-trade", handleManualTrade);
+    return () => {
+      window.removeEventListener("submit-manual-trade", handleManualTrade);
+    };
+  }, [fetchData, addLog]);
+
   // Execute full autonomous pipeline on a specific news item
   const runPipelineForNews = async (targetNews: NewsItem) => {
     setIsAnalyzing(true);
@@ -106,10 +166,10 @@ export default function App() {
     addLog(`Ingested news catalyst: "${targetNews.headline.substring(0, 60)}..."`);
 
     try {
-      // Stage 2: Gemini AI Analysis
+      // Stage 2: Groq AI Analysis
       setCurrentStage(2);
       await new Promise((r) => setTimeout(r, 450)); // smooth visual pacing
-      const rawAiRes = await fetch("/api/gemini/analyze", {
+      const rawAiRes = await safeFetchJson("/api/groq/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -117,7 +177,7 @@ export default function App() {
           summary: targetNews.summary,
           source: targetNews.source,
         }),
-      }).then((r) => r.json());
+      });
 
       const aiRes = {
         symbol: String(rawAiRes.symbol || "SPY").toUpperCase(),
@@ -136,7 +196,7 @@ export default function App() {
 
       setAiDecision(aiRes);
       addLog(
-        `Gemini AI Decision: ${aiRes.signal} • ${aiRes.optionType} $${aiRes.strikePrice || ""} on ${aiRes.symbol} (Confidence: ${Math.round(
+        `Groq AI Decision: ${aiRes.signal} • ${aiRes.optionType} $${aiRes.strikePrice || ""} on ${aiRes.symbol} (Confidence: ${Math.round(
           aiRes.confidence * 100
         )}%, Risk: ${aiRes.risk})`
       );
@@ -147,7 +207,7 @@ export default function App() {
 
       // Stage 4: Risk Gate Check
       setCurrentStage(4);
-      const riskRes = await fetch("/api/risk/evaluate", {
+      const riskRes = await safeFetchJson("/api/risk/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -159,7 +219,7 @@ export default function App() {
           requestedQty: 5,
           estimatedPrice: targetNews.estimated_price || 180.0,
         }),
-      }).then((r) => r.json());
+      });
 
       setRiskResult(riskRes);
 
@@ -168,29 +228,35 @@ export default function App() {
         
         // Stage 5: Paper Trade Execution
         setCurrentStage(5);
-        const orderRes = await fetch("/api/trader/order", {
+        const orderRes = await safeFetchJson("/api/trader/options-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             symbol: riskRes.symbol,
-            qty: riskRes.approvedQty,
+            optionType: aiRes.optionType || (aiRes.signal === "BUY" ? "CALL" : "PUT"),
+            strikePrice: aiRes.strikePrice || 130,
+            contracts: riskRes.approvedQty,
             side: riskRes.signal.toLowerCase(),
-            price: targetNews.estimated_price || 180.0,
+            limitPrice: 4.50, // default mock premium if not provided
           }),
-        }).then((r) => r.json());
+        });
 
         setLastOrderResult(orderRes.order);
         setAccount(orderRes.account);
         addLog(
-          `Alpaca Paper Options Order FILLED: ${orderRes.order.id} (${orderRes.order.side.toUpperCase()} ${
+          `Alpaca Paper Options Order SUBMITTED: ${orderRes.order.id} (${orderRes.order.side.toUpperCase()} ${
             orderRes.order.qty
-          }x ${orderRes.order.symbol} ${aiRes.optionType || (aiRes.signal === "BUY" ? "CALL" : "PUT")} $${aiRes.strikePrice || 130} @ $${orderRes.order.filled_avg_price})`
+          }x ${orderRes.order.symbol} ${aiRes.optionType || (aiRes.signal === "BUY" ? "CALL" : "PUT")} $${aiRes.strikePrice || 130} @ ${orderRes.order.filled_avg_price ? '$' + orderRes.order.filled_avg_price : 'Market/Pending'})`
+        );
+        showToast(
+          "AI Trade Executed",
+          `Routed ${orderRes.order.side.toUpperCase()} ${orderRes.order.qty}x ${orderRes.order.symbol} ${aiRes.optionType} at $${aiRes.strikePrice}`
         );
 
         // Refresh positions and orders blotter
         const [posData, ordData] = await Promise.all([
-          fetch("/api/trader/positions").then((r) => r.json()),
-          fetch("/api/trader/orders").then((r) => r.json()),
+          safeFetchJson("/api/trader/positions"),
+          safeFetchJson("/api/trader/orders"),
         ]);
         setPositions(posData.positions || []);
         setOrders(ordData.orders || []);
@@ -206,6 +272,88 @@ export default function App() {
     }
   };
 
+  const handleManualOverrideBuy = async () => {
+    if (!selectedNews || !aiDecision) return;
+    
+    addLog(`[MANUAL OVERRIDE] User forced a BUY signal for ${aiDecision.symbol}`);
+    
+    const overrideDecision: AiDecision = {
+      ...aiDecision,
+      signal: "BUY",
+      optionType: "CALL",
+      confidence: 1.0,
+      reason: "[Manual Override]: User executed discretionary BUY order.",
+    };
+    
+    setAiDecision(overrideDecision);
+    setCurrentStage(3);
+    await new Promise((r) => setTimeout(r, 350));
+    
+    // Stage 4: Risk Gate Check
+    setCurrentStage(4);
+    try {
+      const riskRes = await safeFetchJson("/api/risk/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision: overrideDecision,
+          minConfidence: riskSettings.minConfidence,
+          maxPositionPct: riskSettings.maxPositionPct,
+          maxOrderQty: riskSettings.maxOrderQty,
+          maxTradesPerSession: riskSettings.maxTradesPerSession,
+          requestedQty: 5,
+          estimatedPrice: selectedNews.estimated_price || 180.0,
+        }),
+      });
+
+      setRiskResult(riskRes);
+
+      if (riskRes.approved) {
+        addLog(`Risk Gate APPROVED: ${riskRes.approvedQty} shares of ${riskRes.symbol}.`);
+        
+        // Stage 5: Paper Trade Execution
+        setCurrentStage(5);
+        const orderRes = await safeFetchJson("/api/trader/options-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: riskRes.symbol,
+            optionType: overrideDecision.optionType || "CALL",
+            strikePrice: overrideDecision.strikePrice || 130,
+            contracts: riskRes.approvedQty,
+            side: riskRes.signal.toLowerCase(),
+            limitPrice: 4.50, // default mock premium if not provided
+          }),
+        });
+
+        setLastOrderResult(orderRes.order);
+        setAccount(orderRes.account);
+        addLog(
+          `Alpaca Paper Options Order SUBMITTED: ${orderRes.order.id} (${orderRes.order.side.toUpperCase()} ${
+            orderRes.order.qty
+          }x ${orderRes.order.symbol} ${overrideDecision.optionType} $${overrideDecision.strikePrice || 130} @ ${orderRes.order.filled_avg_price ? '$' + orderRes.order.filled_avg_price : 'Market/Pending'})`
+        );
+        showToast(
+          "Manual AI Override Executed",
+          `Routed ${orderRes.order.side.toUpperCase()} ${orderRes.order.qty}x ${orderRes.order.symbol} ${overrideDecision.optionType} at $${overrideDecision.strikePrice}`
+        );
+
+        const [posData, ordData] = await Promise.all([
+          safeFetchJson("/api/trader/positions"),
+          safeFetchJson("/api/trader/orders"),
+        ]);
+        setPositions(posData.positions || []);
+        setOrders(ordData.orders || []);
+      } else {
+        setLastOrderResult(null);
+        addLog(`Risk Gate BLOCKED/HELD order. Reason: ${riskRes.rejectionReason}`);
+      }
+    } catch (err: any) {
+      console.error("Pipeline failure in Manual Override:", err);
+      addLog(`Pipeline Error: ${err.message || "Failed to execute cycle"}`);
+    }
+  };
+
   // Full autonomous button handler (picks next news item or top news)
   const handleRunAutonomousCycle = async () => {
     if (isRunningCycle || news.length === 0) return;
@@ -218,6 +366,19 @@ export default function App() {
     
     setIsRunningCycle(false);
   };
+
+  // Auto-Pilot continuous execution loop
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    if (isAutoMode && !isRunningCycle && news.length > 0) {
+      intervalId = setInterval(() => {
+        handleRunAutonomousCycle();
+      }, 15000); // run every 15 seconds
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isAutoMode, isRunningCycle, news]);
 
   const handleResetSessionTrades = async () => {
     try {
@@ -235,7 +396,33 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col selection:bg-indigo-500 selection:text-white font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col selection:bg-indigo-500 selection:text-white font-sans transition-colors duration-500 relative overflow-hidden">
+      {/* Decorative Background Elements */}
+      <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-emerald-500/5 blur-[120px] pointer-events-none" />
+
+      {/* Global Toast Notification Overlay */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: 20 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: -20, x: 20 }}
+            className="fixed top-20 right-6 z-[100] glass-panel bg-white/95 p-4 rounded-xl shadow-2xl shadow-emerald-500/10 border border-emerald-500/20 max-w-sm min-w-[300px]"
+          >
+            <div className="flex items-start space-x-3">
+              <div className="p-2 rounded-full bg-emerald-100 text-emerald-600 shadow-sm shrink-0">
+                <Check className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-900 leading-tight">{toast.title}</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{toast.desc}</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
@@ -245,42 +432,53 @@ export default function App() {
         isRefreshing={isRefreshing}
         onRunAutonomousCycle={handleRunAutonomousCycle}
         isRunningCycle={isRunningCycle}
+        isAutoMode={isAutoMode}
+        toggleAutoMode={() => setIsAutoMode((prev) => !prev)}
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-5">
+      <motion.main 
+        initial={{ opacity: 0, y: 10 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 relative z-10"
+      >
         {/* Alpaca Configuration Notice Banner if credentials missing */}
-        {configStatus && !configStatus.hasAlpacaKey && (
-          <div
-            id="alpaca-credentials-notice-banner"
-            className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-          >
-            <div className="flex items-start sm:items-center space-x-3">
-              <div className="p-2 rounded-lg bg-amber-100 text-amber-700 shrink-0">
-                <AlertCircle className="h-5 w-5" />
-              </div>
-              <div className="text-xs">
-                <div className="font-bold text-amber-950 flex items-center space-x-2">
-                  <span>Alpaca Paper Trading Keys Required for Live Paper Sync</span>
-                  <span className="px-1.5 py-0.5 rounded bg-amber-200/70 text-amber-800 text-[10px] uppercase font-semibold">
-                    Running in Local Simulation
-                  </span>
-                </div>
-                <p className="text-amber-800 mt-0.5">
-                  Configure <code className="font-mono bg-white/80 px-1 py-0.5 rounded border border-amber-200 font-semibold">ALPACA_API_KEY</code> and <code className="font-mono bg-white/80 px-1 py-0.5 rounded border border-amber-200 font-semibold">ALPACA_SECRET_KEY</code> in environment variables or Settings to stream your live Alpaca Paper balances and submit real paper orders.
-                </p>
-              </div>
-            </div>
-            <button
-              id="banner-configure-keys-btn"
-              onClick={() => setActiveTab("settings")}
-              className="shrink-0 px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition-all shadow-sm flex items-center space-x-1.5"
+        <AnimatePresence>
+          {configStatus && !configStatus.hasAlpacaKey && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              id="alpaca-credentials-notice-banner"
+              className="p-5 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 backdrop-blur-sm"
             >
-              <Key className="h-3.5 w-3.5" />
-              <span>Configure Keys</span>
-            </button>
-          </div>
-        )}
+              <div className="flex items-start sm:items-center space-x-4">
+                <div className="p-2.5 rounded-xl bg-amber-100 text-amber-700 shrink-0 shadow-sm">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <div className="text-[13px]">
+                  <div className="font-extrabold text-amber-950 flex flex-wrap items-center gap-2">
+                    <span>Alpaca Paper Trading Keys Required for Live Paper Sync</span>
+                    <span className="px-2 py-0.5 rounded-md bg-amber-200/70 text-amber-900 text-[10px] uppercase font-black tracking-wider shadow-sm">
+                      Running in Local Simulation
+                    </span>
+                  </div>
+                  <p className="text-amber-800 font-medium mt-1">
+                    Configure <code className="font-mono bg-white/80 px-1.5 py-0.5 rounded-md border border-amber-200 font-bold mx-0.5 shadow-sm text-xs">ALPACA_API_KEY</code> and <code className="font-mono bg-white/80 px-1.5 py-0.5 rounded-md border border-amber-200 font-bold mx-0.5 shadow-sm text-xs">ALPACA_SECRET_KEY</code> in environment variables or Settings to stream your live Alpaca Paper balances and submit real paper orders.
+                  </p>
+                </div>
+              </div>
+              <button
+                id="banner-configure-keys-btn"
+                onClick={() => setActiveTab("settings")}
+                className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[13px] font-black tracking-wide transition-all shadow-md shadow-amber-500/20 flex items-center space-x-2"
+              >
+                <Key className="h-4 w-4" />
+                <span>Configure Keys</span>
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Always visible top metrics row */}
         <PortfolioMetrics
@@ -291,7 +489,11 @@ export default function App() {
 
         {/* Tab 1: Live Dashboard View */}
         {activeTab === "dashboard" && (
-          <div className="space-y-5">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
             {/* Visual 5-Stage Pipeline Indicator */}
             <PipelineVisualizer
               currentStage={currentStage}
@@ -302,9 +504,9 @@ export default function App() {
             />
 
             {/* Main 2-Column Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Column: News Feed (5 cols) */}
-              <div className="lg:col-span-5 h-[560px]">
+              <div className="lg:col-span-5 min-h-[580px]">
                 <NewsFeed
                   news={news}
                   selectedNewsId={selectedNews?.id || null}
@@ -315,11 +517,12 @@ export default function App() {
               </div>
 
               {/* Middle & Right: AI Decision + Risk Gate + Blotter (7 cols) */}
-              <div className="lg:col-span-7 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="lg:col-span-7 space-y-6 flex flex-col min-h-[580px]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
                   <AiDecisionCard
                     decision={aiDecision}
                     isAnalyzing={isAnalyzing}
+                    onManualOverrideBuy={handleManualOverrideBuy}
                   />
                   <RiskAuditPanel
                     riskResult={riskResult}
@@ -327,7 +530,7 @@ export default function App() {
                   />
                 </div>
 
-                <div className="h-[280px]">
+                <div className="flex-1 min-h-[280px]">
                   <PositionsAndOrders
                     positions={positions}
                     orders={orders}
@@ -341,12 +544,16 @@ export default function App() {
               logs={logs}
               onClearLogs={() => setLogs([])}
             />
-          </div>
+          </motion.div>
         )}
 
         {/* Tab 2: 5-Stage Pipeline Deep-Dive View */}
         {activeTab === "pipeline" && (
-          <div className="space-y-5">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
             <PipelineVisualizer
               currentStage={currentStage}
               selectedNews={selectedNews}
@@ -355,19 +562,20 @@ export default function App() {
               orderResult={lastOrderResult}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="md:col-span-1 space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 space-y-4">
+                <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500 ml-1">
                   Step 1 &amp; 2: News &amp; AI Analysis
                 </h4>
                 <AiDecisionCard
                   decision={aiDecision}
                   isAnalyzing={isAnalyzing}
+                  onManualOverrideBuy={handleManualOverrideBuy}
                 />
               </div>
 
-              <div className="md:col-span-1 space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <div className="lg:col-span-1 space-y-4">
+                <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500 ml-1">
                   Step 3 &amp; 4: Capital Risk Gate
                 </h4>
                 <RiskAuditPanel
@@ -376,14 +584,16 @@ export default function App() {
                 />
               </div>
 
-              <div className="md:col-span-1 space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Step 5: Alpaca Paper Options Order Blotter
+              <div className="lg:col-span-1 space-y-4">
+                <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500 ml-1">
+                  Step 5: Paper Order Blotter
                 </h4>
-                <PositionsAndOrders
-                  positions={positions}
-                  orders={orders}
-                />
+                <div className="min-h-[280px] h-full">
+                  <PositionsAndOrders
+                    positions={positions}
+                    orders={orders}
+                  />
+                </div>
               </div>
             </div>
 
@@ -391,22 +601,40 @@ export default function App() {
               logs={logs}
               onClearLogs={() => setLogs([])}
             />
-          </div>
+          </motion.div>
         )}
 
-        {/* Tab 3: Python Source Code & Hackathon Files Explorer */}
-        {activeTab === "code" && <PythonProjectExplorer />}
 
-        {/* Tab 4: Risk Settings & API Credentials */}
+        {/* Tab 4: CLI Terminal */}
+        {activeTab === "terminal" && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
+            <div className="glass-panel rounded-2xl p-6 shadow-sm border border-slate-200/80">
+              <h3 className="font-extrabold text-xl text-slate-900 mb-2 tracking-tight">Alpaca CLI Terminal</h3>
+              <p className="text-[13px] text-slate-500 font-medium max-w-3xl leading-relaxed">
+                Interact directly with your Alpaca paper account using CLI commands. 
+                This interface translates standard <code className="bg-indigo-50 font-bold px-1.5 py-0.5 rounded-md text-indigo-600 border border-indigo-100 mx-0.5 shadow-sm text-xs">alpaca</code> commands into real-time API requests, meeting the hackathon's terminal interaction requirements.
+              </p>
+            </div>
+            <CliTerminal />
+          </motion.div>
+        )}
+
+        {/* Tab 5: Risk Settings & API Credentials */}
         {activeTab === "settings" && (
-          <RiskSettingsView
-            riskSettings={riskSettings}
-            setRiskSettings={setRiskSettings}
-            configStatus={configStatus}
-            onResetSessionTrades={handleResetSessionTrades}
-          />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <RiskSettingsView
+              riskSettings={riskSettings}
+              setRiskSettings={setRiskSettings}
+              configStatus={configStatus}
+              onResetSessionTrades={handleResetSessionTrades}
+            />
+          </motion.div>
         )}
-      </main>
+      </motion.main>
 
       {/* Custom Catalyst Modal */}
       <CustomCatalystModal
@@ -416,13 +644,13 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500 mt-8">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span className="font-medium text-slate-700">
+      <footer className="border-t border-slate-200 bg-white/80 backdrop-blur-md py-6 text-center text-[11px] font-bold tracking-wide text-slate-400 mt-auto relative z-10">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span className="text-slate-600">
             Alpaca AI Trading Agents Hackathon 2026 • Autonomous Pipeline in Paper Sandbox
           </span>
-          <span className="text-[11px] text-slate-400">
-            Autonomous Demonstration System • Paper Sandbox Only • Not Financial Advice
+          <span className="uppercase text-[10px] tracking-widest bg-slate-100 px-3 py-1 rounded-full">
+            Autonomous Demonstration System • Not Financial Advice
           </span>
         </div>
       </footer>

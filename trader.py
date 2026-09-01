@@ -1,11 +1,12 @@
 """
 Alpaca Paper Trading Module
-Interfaces with the Alpaca Paper Trading API using alpaca-py.
+Interfaces with the Alpaca Paper Trading API using alpaca-py and requests for options.
 Guarantees paper trading only; never connects to live broker endpoints.
 """
 
 import datetime
 import uuid
+import requests
 from typing import Dict, Any, List, Optional
 from config import config
 
@@ -55,6 +56,13 @@ DEMO_STATE = {
     ]
 }
 
+def build_occ_symbol(underlying: str, expiry_yymmdd: str, option_type: str, strike: float) -> str:
+    """Builds OCC standard option symbol (e.g., AAPL260919C00230000)"""
+    sym = underlying.upper().ljust(6, ' ')[:6].strip()
+    cp = "C" if option_type.upper() == "CALL" else "P"
+    strike_str = str(int(round(strike * 1000))).zfill(8)
+    return f"{sym}{expiry_yymmdd}{cp}{strike_str}"
+
 class AlpacaTrader:
     def __init__(self):
         self.is_paper = True  # Strict paper trading guarantee
@@ -79,7 +87,6 @@ class AlpacaTrader:
         return self.client is not None
 
     def get_account(self) -> Dict[str, Any]:
-        """Retrieves paper account balance and equity information."""
         if self.client:
             try:
                 acc = self.client.get_account()
@@ -93,15 +100,12 @@ class AlpacaTrader:
                     "is_demo": False
                 }
             except Exception as e:
-                # Fail gracefully to demo mock with error notification
                 demo_acc = dict(DEMO_STATE["account"])
                 demo_acc["notice"] = f"Alpaca API notice: {str(e)}"
                 return demo_acc
-                
         return dict(DEMO_STATE["account"])
 
     def get_positions(self) -> List[Dict[str, Any]]:
-        """Retrieves list of all current open paper positions."""
         if self.client:
             try:
                 positions = self.client.get_all_positions()
@@ -119,72 +123,9 @@ class AlpacaTrader:
                 return result
             except Exception:
                 return list(DEMO_STATE["positions"])
-
         return list(DEMO_STATE["positions"])
 
-    def submit_buy_order(self, symbol: str, qty: int, estimated_price: float = 180.0) -> Dict[str, Any]:
-        """Submits a paper BUY market order to Alpaca (or simulated in demo mode)."""
-        symbol = symbol.upper()
-        
-        if self.client:
-            try:
-                from alpaca.trading.requests import MarketOrderRequest
-                from alpaca.trading.enums import OrderSide, TimeInForce
-                
-                req = MarketOrderRequest(
-                    symbol=symbol,
-                    qty=qty,
-                    side=OrderSide.BUY,
-                    time_in_force=TimeInForce.DAY
-                )
-                order = self.client.submit_order(order_data=req)
-                return {
-                    "id": str(order.id),
-                    "symbol": str(order.symbol),
-                    "qty": float(order.qty),
-                    "side": "buy",
-                    "status": str(order.status),
-                    "submitted_at": str(order.submitted_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                    "is_demo": False
-                }
-            except Exception as e:
-                # If market is closed or API errors, record in demo fallback
-                return self._simulate_buy(symbol, qty, estimated_price, note=f"Alpaca response: {str(e)}")
-
-        return self._simulate_buy(symbol, qty, estimated_price)
-
-    def submit_sell_order(self, symbol: str, qty: int, estimated_price: float = 180.0) -> Dict[str, Any]:
-        """Submits a paper SELL market order to Alpaca (or simulated in demo mode)."""
-        symbol = symbol.upper()
-
-        if self.client:
-            try:
-                from alpaca.trading.requests import MarketOrderRequest
-                from alpaca.trading.enums import OrderSide, TimeInForce
-                
-                req = MarketOrderRequest(
-                    symbol=symbol,
-                    qty=qty,
-                    side=OrderSide.SELL,
-                    time_in_force=TimeInForce.DAY
-                )
-                order = self.client.submit_order(order_data=req)
-                return {
-                    "id": str(order.id),
-                    "symbol": str(order.symbol),
-                    "qty": float(order.qty),
-                    "side": "sell",
-                    "status": str(order.status),
-                    "submitted_at": str(order.submitted_at or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                    "is_demo": False
-                }
-            except Exception as e:
-                return self._simulate_sell(symbol, qty, estimated_price, note=f"Alpaca response: {str(e)}")
-
-        return self._simulate_sell(symbol, qty, estimated_price)
-
     def get_orders(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Retrieves recent paper trading orders."""
         if self.client:
             try:
                 from alpaca.trading.requests import GetOrdersRequest
@@ -207,72 +148,63 @@ class AlpacaTrader:
                 return result
             except Exception:
                 return list(DEMO_STATE["orders"])
-
         return list(DEMO_STATE["orders"])
 
-    # Internal Demo Mode simulation helpers
-    def _simulate_buy(self, symbol: str, qty: int, price: float, note: Optional[str] = None) -> Dict[str, Any]:
-        cost = qty * price
-        DEMO_STATE["account"]["cash"] = max(0.0, DEMO_STATE["account"]["cash"] - cost)
+    def submit_options_order(self, underlying: str, option_type: str, strike: float, expiry: str, contracts: int, side: str = "buy", premium_estimate: float = 5.0) -> Dict[str, Any]:
+        """Submits an Options order to Alpaca Paper (or simulates)."""
+        occ_symbol = build_occ_symbol(underlying, expiry, option_type, strike)
+        
+        if self.client and config.has_alpaca_keys():
+            try:
+                # Alpaca options orders must be submitted via REST if SDK is outdated
+                headers = {
+                    "APCA-API-KEY-ID": config.ALPACA_API_KEY,
+                    "APCA-API-SECRET-KEY": config.ALPACA_SECRET_KEY,
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "symbol": occ_symbol,
+                    "qty": contracts,
+                    "side": side.lower(),
+                    "type": "market",
+                    "time_in_force": "day"
+                }
+                res = requests.post(f"{config.ALPACA_BASE_URL}/v2/orders", json=payload, headers=headers)
+                res.raise_for_status()
+                order = res.json()
+                return {
+                    "id": str(order.get("id"))[:12],
+                    "symbol": occ_symbol,
+                    "qty": float(order.get("qty", contracts)),
+                    "side": side.lower(),
+                    "status": order.get("status", "pending"),
+                    "submitted_at": order.get("submitted_at", datetime.datetime.now().isoformat())[:19].replace("T", " "),
+                    "is_demo": False,
+                    "occ_symbol": occ_symbol
+                }
+            except Exception as e:
+                return self._simulate_options_order(occ_symbol, contracts, side, premium_estimate, note=f"Live error: {str(e)}")
+
+        return self._simulate_options_order(occ_symbol, contracts, side, premium_estimate)
+
+    def _simulate_options_order(self, occ_symbol: str, qty: int, side: str, premium_estimate: float, note: Optional[str] = None) -> Dict[str, Any]:
+        total_cost = qty * premium_estimate * 100
+        DEMO_STATE["account"]["cash"] = max(0.0, DEMO_STATE["account"]["cash"] - total_cost)
         DEMO_STATE["account"]["buying_power"] = DEMO_STATE["account"]["cash"] * 2.0
         
-        # Update positions
-        pos = next((p for p in DEMO_STATE["positions"] if p["symbol"] == symbol), None)
-        if pos:
-            total_qty = pos["qty"] + qty
-            pos["avg_entry_price"] = round(((pos["qty"] * pos["avg_entry_price"]) + (qty * price)) / total_qty, 2)
-            pos["qty"] = total_qty
-            pos["current_price"] = price
-            pos["market_value"] = round(total_qty * price, 2)
-        else:
-            DEMO_STATE["positions"].append({
-                "symbol": symbol,
-                "qty": qty,
-                "avg_entry_price": price,
-                "current_price": price,
-                "market_value": round(qty * price, 2),
-                "unrealized_pl": 0.0,
-                "unrealized_plpc": 0.0
-            })
-
         order_record = {
-            "id": f"ord-paper-{uuid.uuid4().hex[:6]}",
-            "symbol": symbol,
+            "id": f"ord-opt-{uuid.uuid4().hex[:6]}",
+            "symbol": occ_symbol,
             "qty": qty,
-            "side": "buy",
+            "side": side.lower(),
             "order_type": "market",
             "status": "filled",
             "submitted_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "filled_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "filled_avg_price": price,
-            "note": note or "Simulated Paper Trade"
-        }
-        DEMO_STATE["orders"].insert(0, order_record)
-        return order_record
-
-    def _simulate_sell(self, symbol: str, qty: int, price: float, note: Optional[str] = None) -> Dict[str, Any]:
-        proceeds = qty * price
-        DEMO_STATE["account"]["cash"] += proceeds
-        DEMO_STATE["account"]["buying_power"] = DEMO_STATE["account"]["cash"] * 2.0
-        
-        pos = next((p for p in DEMO_STATE["positions"] if p["symbol"] == symbol), None)
-        if pos:
-            pos["qty"] = max(0, pos["qty"] - qty)
-            pos["market_value"] = round(pos["qty"] * price, 2)
-            if pos["qty"] == 0:
-                DEMO_STATE["positions"].remove(pos)
-
-        order_record = {
-            "id": f"ord-paper-{uuid.uuid4().hex[:6]}",
-            "symbol": symbol,
-            "qty": qty,
-            "side": "sell",
-            "order_type": "market",
-            "status": "filled",
-            "submitted_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "filled_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "filled_avg_price": price,
-            "note": note or "Simulated Paper Trade"
+            "filled_avg_price": premium_estimate,
+            "note": note or "Simulated Paper Options Trade",
+            "is_demo": True,
+            "occ_symbol": occ_symbol
         }
         DEMO_STATE["orders"].insert(0, order_record)
         return order_record

@@ -1,7 +1,7 @@
 """
 Streamlit Web Dashboard for Alpaca AI Trading Agent
 Hackathon: Alpaca AI Trading Agents Hackathon (28 Aug - 4 Sept 2026)
-Autonomous pipeline: NEWS -> GEMINI AI -> SIGNAL -> RISK MANAGEMENT -> ALPACA PAPER ORDER
+Autonomous pipeline: NEWS -> GROQ AI -> OPTIONS SIGNAL -> RISK MANAGEMENT -> ALPACA PAPER ORDER
 """
 
 import datetime
@@ -10,7 +10,7 @@ import streamlit as st
 
 from config import config
 from news import get_latest_market_news
-from agent import analyze_news_with_gemini
+from agent import analyze_news_with_groq
 from risk_manager import RiskManager
 from trader import AlpacaTrader
 
@@ -78,6 +78,22 @@ st.markdown("""
         border-radius: 6px;
         font-weight: bold;
     }
+    .badge-call {
+        background-color: #3b82f6;
+        color: #ffffff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .badge-put {
+        background-color: #ec4899;
+        color: #ffffff;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
     .audit-pass {
         color: #10b981;
         font-weight: 500;
@@ -99,7 +115,7 @@ if "risk_manager" not in st.session_state:
 if "logs" not in st.session_state:
     st.session_state.logs = [
         f"[{datetime.datetime.now().strftime('%H:%M:%S')}] System initialized in Paper Trading Mode.",
-        f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Risk Management layer active. Conservative safeguards applied."
+        f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Risk Management layer active. Institutional safeguards applied."
     ]
 
 if "last_news" not in st.session_state:
@@ -126,26 +142,24 @@ st.sidebar.title("Agent Controls")
 
 # Mode indicator
 is_connected_alpaca = st.session_state.trader.is_connected_to_live_paper_api()
-has_gemini = config.has_gemini_key()
+has_groq = config.has_groq_key()
 
-if not (is_connected_alpaca and has_gemini):
+if not (is_connected_alpaca and has_groq):
     st.sidebar.warning("⚠️ **DEMO / SIMULATION MODE**")
-    st.sidebar.caption("API keys not fully detected in environment. Running safe local paper-trading simulation with full interactive capabilities.")
+    st.sidebar.caption("API keys not fully detected. Running safe local options trading simulation.")
 else:
     st.sidebar.success("✅ **ALPACA PAPER CONNECTED**")
-    st.sidebar.caption("Connected to Alpaca Paper Trading API & Google Gemini AI.")
+    st.sidebar.caption("Connected to Alpaca Paper Trading API & Groq AI.")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🛡️ Risk Controls")
 min_conf = st.sidebar.slider("Min AI Confidence Threshold", min_value=0.50, max_value=0.95, value=0.70, step=0.05)
 max_pos_pct = st.sidebar.slider("Max Position Size (% Portfolio)", min_value=0.05, max_value=0.30, value=0.10, step=0.05)
-max_order_qty = st.sidebar.number_input("Max Order Quantity (Shares)", min_value=1, max_value=100, value=25)
 max_session_trades = st.sidebar.number_input("Max Session Trades", min_value=1, max_value=50, value=10)
 
 # Update Risk Manager instance params
 st.session_state.risk_manager.min_confidence = min_conf
 st.session_state.risk_manager.max_position_pct = max_pos_pct
-st.session_state.risk_manager.max_order_qty = max_order_qty
 st.session_state.risk_manager.max_trades_per_session = max_session_trades
 
 if st.sidebar.button("🔄 Reset Session Trades Counter"):
@@ -157,23 +171,23 @@ st.sidebar.markdown("---")
 st.sidebar.caption("🔒 **Paper Trading Guarantee**: Live broker routing is hard-disabled. All orders are submitted strictly to the Alpaca Paper sandbox environment.")
 
 # Header
-st.markdown('<div class="main-header">⚡ Alpaca AI Trading Agent</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Autonomous Market News Evaluator, Gemini Signal Generation, and Risk-Managed Paper Execution</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">⚡ Alpaca AI Options Trading Agent</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Autonomous Market News Evaluator, Groq Signal Generation, and Risk-Managed Paper Options Execution</div>', unsafe_allow_html=True)
 
 # 5-Stage Architecture Pipeline Visualizer
-st.markdown("### 🔄 Autonomous Execution Pipeline")
-col1, col_a1, col2, col_a2, col3, col_a3, col4, col_a4, col5 = st.columns([2, 0.4, 2, 0.4, 2, 0.4, 2.2, 0.4, 2.2])
+st.markdown("### 🔄 Autonomous Options Execution Pipeline")
+col1, col_a1, col2, col_a2, col3, col_a3, col4, col_a4, col5 = st.columns([2, 0.4, 2, 0.4, 2.5, 0.4, 2.2, 0.4, 2.2])
 
 with col1:
     st.markdown('<div class="pipeline-step">1. NEWS INGESTION<br><small style="color:#94a3b8">Market Catalysts</small></div>', unsafe_allow_html=True)
 with col_a1:
     st.markdown('<div class="pipeline-arrow">➔</div>', unsafe_allow_html=True)
 with col2:
-    st.markdown('<div class="pipeline-step">2. GEMINI AI<br><small style="color:#94a3b8">LLM Reasoning</small></div>', unsafe_allow_html=True)
+    st.markdown('<div class="pipeline-step">2. GROQ AI<br><small style="color:#94a3b8">Llama 3.3 70B</small></div>', unsafe_allow_html=True)
 with col_a2:
     st.markdown('<div class="pipeline-arrow">➔</div>', unsafe_allow_html=True)
 with col3:
-    st.markdown('<div class="pipeline-step">3. SIGNAL (JSON)<br><small style="color:#94a3b8">BUY / SELL / HOLD</small></div>', unsafe_allow_html=True)
+    st.markdown('<div class="pipeline-step">3. OPTIONS SIGNAL<br><small style="color:#94a3b8">CALL / PUT + STRIKE</small></div>', unsafe_allow_html=True)
 with col_a3:
     st.markdown('<div class="pipeline-arrow">➔</div>', unsafe_allow_html=True)
 with col4:
@@ -209,7 +223,6 @@ btn_col1, btn_col2, btn_col3 = st.columns([1.5, 1.5, 3])
 with btn_col1:
     if st.button("🚀 Run Full Autonomous Cycle", type="primary", use_container_width=True):
         with st.spinner("Executing Autonomous Pipeline..."):
-            # Step 1: Get News
             news_items = get_latest_market_news(limit=6)
             st.session_state.last_news = news_items
             selected_news = news_items[0] if news_items else None
@@ -217,41 +230,46 @@ with btn_col1:
             if selected_news:
                 add_log(f"News selected: '{selected_news['headline'][:60]}...'")
                 
-                # Step 2: Gemini AI Analysis
-                decision = analyze_news_with_gemini(
+                decision = analyze_news_with_groq(
                     headline=selected_news["headline"],
                     summary=selected_news["summary"],
                     source=selected_news.get("source", "Market Feed")
                 )
                 st.session_state.last_decision = decision
-                add_log(f"AI Decision generated: {decision['signal']} on {decision['symbol']} (Confidence: {decision['confidence']:.2f}, Risk: {decision['risk']})")
                 
-                # Step 3: Risk Management Check
+                sig = decision["signal"]
+                opt = decision["option_type"]
+                add_log(f"AI Options Decision: {sig} {opt} on {decision['symbol']} @ ${decision['strike_price']} (Confidence: {decision['confidence']:.2f})")
+                
                 positions = st.session_state.trader.get_positions()
                 risk_res = st.session_state.risk_manager.evaluate_decision(
                     ai_decision=decision,
                     account_info=account_info,
-                    current_positions=positions,
-                    estimated_price=200.0,
-                    requested_qty=config.DEFAULT_TRADE_QTY
+                    current_positions=positions
                 )
                 st.session_state.last_risk_result = risk_res
                 
-                # Step 4: Alpaca Execution (if approved)
                 if risk_res.approved:
-                    add_log(f"Risk Management APPROVED trade for {risk_res.approved_qty} shares of {risk_res.symbol}.")
-                    if decision["signal"] == "BUY":
-                        order = st.session_state.trader.submit_buy_order(symbol=risk_res.symbol, qty=risk_res.approved_qty)
-                    else:
-                        order = st.session_state.trader.submit_sell_order(symbol=risk_res.symbol, qty=risk_res.approved_qty)
+                    add_log(f"Risk Gate APPROVED trade for {risk_res.approved_qty} contracts of {risk_res.symbol}.")
+                    
+                    # Hardcoded expiry for hackathon simulation demo (Next 3rd Friday logic handled in JS, simulate here)
+                    order = st.session_state.trader.submit_options_order(
+                        underlying=risk_res.symbol,
+                        option_type=decision["option_type"],
+                        strike=decision["strike_price"],
+                        expiry="261016", # Oct 16 2026 
+                        contracts=risk_res.approved_qty,
+                        side="buy", # Usually we buy options in this simple agent
+                        premium_estimate=decision.get("max_premium", 5.0)
+                    )
                     
                     st.session_state.risk_manager.increment_session_trades()
                     st.session_state.last_order_result = order
-                    add_log(f"Alpaca Paper Order Submitted successfully: {order.get('id')} ({order.get('side', '').upper()} {order.get('qty')} {order.get('symbol')})")
-                    st.success(f"✅ Order Executed: {order.get('side', '').upper()} {order.get('qty')} {order.get('symbol')}")
+                    add_log(f"Alpaca Paper Options Order Submitted: {order.get('occ_symbol', order.get('symbol'))}")
+                    st.success(f"✅ Options Order Executed: {order.get('occ_symbol', order.get('symbol'))}")
                 else:
                     st.session_state.last_order_result = None
-                    add_log(f"Risk Management BLOCKED/HELD trade. Reason: {risk_res.rejection_reason}")
+                    add_log(f"Risk Gate BLOCKED trade. Reason: {risk_res.rejection_reason}")
                     st.info(f"🛑 Risk Gate Notice: {risk_res.rejection_reason}")
             else:
                 st.error("No market news could be retrieved.")
@@ -269,12 +287,12 @@ with btn_col3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 2-Column Main Layout: Left = News & AI Analysis; Right = Risk Check, Orders, Positions
+# 2-Column Main Layout
 main_left, main_right = st.columns([1.1, 0.9])
 
 with main_left:
     st.subheader("📰 Latest Market News Feed")
-    st.caption("Click 'Analyze This Story' to target a specific market catalyst with the Gemini AI model.")
+    st.caption("Click 'Analyze This Story' to target a specific market catalyst with Groq AI.")
     
     for idx, item in enumerate(st.session_state.last_news):
         with st.expander(f"{'🏷️ ' + item['symbol'] if item.get('symbol') else '🌐'} {item['headline']}", expanded=(idx == 0)):
@@ -282,8 +300,8 @@ with main_left:
             st.caption(f"Source: {item['source']} | Published: {item['timestamp']}")
             
             if st.button(f"⚡ Analyze News #{idx+1}", key=f"btn_analyze_{idx}"):
-                with st.spinner(f"Querying Gemini AI for {item.get('symbol', 'Equity')}..."):
-                    dec = analyze_news_with_gemini(item["headline"], item["summary"], item["source"])
+                with st.spinner(f"Querying Groq AI for {item.get('symbol', 'Equity')}..."):
+                    dec = analyze_news_with_groq(item["headline"], item["summary"], item["source"])
                     st.session_state.last_decision = dec
                     
                     pos = st.session_state.trader.get_positions()
@@ -295,36 +313,55 @@ with main_left:
                     st.session_state.last_risk_result = r_res
                     
                     if r_res.approved:
-                        if dec["signal"] == "BUY":
-                            ord_res = st.session_state.trader.submit_buy_order(symbol=r_res.symbol, qty=r_res.approved_qty)
-                        else:
-                            ord_res = st.session_state.trader.submit_sell_order(symbol=r_res.symbol, qty=r_res.approved_qty)
+                        ord_res = st.session_state.trader.submit_options_order(
+                            underlying=r_res.symbol,
+                            option_type=dec["option_type"],
+                            strike=dec["strike_price"],
+                            expiry="261016",
+                            contracts=r_res.approved_qty,
+                            side="buy",
+                            premium_estimate=dec.get("max_premium", 5.0)
+                        )
                         st.session_state.risk_manager.increment_session_trades()
                         st.session_state.last_order_result = ord_res
-                        add_log(f"Analyzed #{idx+1} -> Approved & Executed {ord_res.get('side')} for {ord_res.get('symbol')}")
+                        add_log(f"Analyzed #{idx+1} -> Executed {ord_res.get('occ_symbol')}")
                     else:
                         st.session_state.last_order_result = None
                         add_log(f"Analyzed #{idx+1} -> Risk Hold: {r_res.rejection_reason}")
                     st.rerun()
 
     st.markdown("---")
-    st.subheader("🤖 Latest AI Agent Decision")
+    st.subheader("🤖 Latest AI Agent Options Decision")
     if st.session_state.last_decision:
         d = st.session_state.last_decision
         
-        # Color badge for signal
         sig = d["signal"]
         badge_class = "badge-buy" if sig == "BUY" else ("badge-sell" if sig == "SELL" else "badge-hold")
+        
+        opt = d.get("option_type", "N/A")
+        opt_badge = ""
+        if opt == "CALL":
+            opt_badge = f'<span class="badge-call">CALL</span>'
+        elif opt == "PUT":
+            opt_badge = f'<span class="badge-put">PUT</span>'
+            
+        strike = d.get('strike_price', 'N/A')
+        strat = d.get('strategy_name', 'Hold')
         
         st.markdown(f"""
         <div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span style="font-size: 1.3rem; font-weight: bold; color: #f8fafc;">Symbol: {d['symbol']}</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.3rem; font-weight: bold; color: #f8fafc;">{d['symbol']}</span>
+                    {opt_badge}
+                    <span style="color: #cbd5e1; font-weight: bold;">Strike: ${strike}</span>
+                </div>
                 <span class="{badge_class}">{sig}</span>
             </div>
             <div style="display: flex; gap: 24px; margin-bottom: 12px;">
+                <div><span style="color:#94a3b8">Strategy:</span> <strong>{strat}</strong></div>
+                <div><span style="color:#94a3b8">Contracts:</span> <strong>{d.get('contracts', 0)}</strong></div>
                 <div><span style="color:#94a3b8">Confidence:</span> <strong>{int(d['confidence']*100)}%</strong></div>
-                <div><span style="color:#94a3b8">Assessed Risk:</span> <strong>{d['risk']}</strong></div>
             </div>
             <div style="background: #1e293b; padding: 10px; border-radius: 6px; color: #e2e8f0; font-size: 0.95rem;">
                 <strong>AI Reasoning:</strong> {d['reason']}
@@ -334,16 +371,54 @@ with main_left:
         
         with st.expander("🔍 View Raw Structured JSON"):
             st.json(d)
+            
+        if sig == "HOLD":
+            if st.button("⚡ Manual Override: BUY", type="secondary"):
+                with st.spinner("Executing Discretionary Manual Buy..."):
+                    # Create override decision payload
+                    override_dec = d.copy()
+                    override_dec["signal"] = "BUY"
+                    override_dec["option_type"] = "CALL"
+                    override_dec["confidence"] = 1.0
+                    override_dec["reason"] = "[Manual Override]: User executed discretionary BUY order."
+                    
+                    pos = st.session_state.trader.get_positions()
+                    r_res = st.session_state.risk_manager.evaluate_decision(
+                        ai_decision=override_dec,
+                        account_info=account_info,
+                        current_positions=pos
+                    )
+                    st.session_state.last_risk_result = r_res
+                    
+                    if r_res.approved:
+                        ord_res = st.session_state.trader.submit_options_order(
+                            underlying=r_res.symbol,
+                            option_type=override_dec["option_type"],
+                            strike=override_dec["strike_price"] or 130,
+                            expiry="261016",
+                            contracts=r_res.approved_qty,
+                            side="buy",
+                            premium_estimate=override_dec.get("max_premium", 5.0)
+                        )
+                        st.session_state.risk_manager.increment_session_trades()
+                        st.session_state.last_order_result = ord_res
+                        add_log(f"[MANUAL OVERRIDE] Executed BUY {ord_res.get('occ_symbol')}")
+                    else:
+                        st.session_state.last_order_result = None
+                        add_log(f"[MANUAL OVERRIDE] Risk Hold: {r_res.rejection_reason}")
+                    
+                    st.session_state.last_decision = override_dec
+                    st.rerun()
     else:
-        st.info("No AI decision generated yet. Click **'Run Full Autonomous Cycle'** or select a news item above.")
+        st.info("No AI decision generated yet.")
 
 with main_right:
-    st.subheader("🛡️ Risk Management & Order Blotter")
+    st.subheader("🛡️ Risk Management & Options Blotter")
     
     if st.session_state.last_risk_result:
         r = st.session_state.last_risk_result
         if r.approved:
-            st.success(f"✅ **Risk Assessment: APPROVED** ({r.approved_qty} shares of {r.symbol})")
+            st.success(f"✅ **Risk Assessment: APPROVED** ({r.approved_qty} contracts of {r.symbol} {r.option_type})")
         else:
             st.warning(f"🛑 **Risk Assessment: REJECTED / HOLD**")
             st.caption(f"Reason: {r.rejection_reason}")
@@ -363,9 +438,8 @@ with main_right:
     positions = st.session_state.trader.get_positions()
     if positions:
         pos_df = pd.DataFrame(positions)
-        # Format columns for display
         display_df = pos_df[["symbol", "qty", "avg_entry_price", "current_price", "market_value", "unrealized_pl"]].copy()
-        display_df.columns = ["Symbol", "Shares", "Avg Entry ($)", "Current ($)", "Market Value ($)", "Unrealized P&L ($)"]
+        display_df.columns = ["Symbol", "Shares/Contracts", "Avg Entry ($)", "Current ($)", "Market Value ($)", "Unrealized P&L ($)"]
         st.dataframe(display_df, use_container_width=True, hide_index=True)
     else:
         st.info("No open positions in paper portfolio.")
