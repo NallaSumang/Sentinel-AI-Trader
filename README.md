@@ -130,12 +130,14 @@ ALPACA_SECRET_KEY=your_alpaca_secret
 
 **Run the React + Node.js Dashboard:**
 ```bash
+cd frontend
 npm run dev
 ```
 Access at `http://localhost:3000`
 
 **Run the Python Streamlit Backend:**
 ```bash
+cd backend
 streamlit run app.py
 ```
 Access at `http://localhost:8501`
@@ -155,12 +157,11 @@ This project addresses the core themes of the **Alpaca AI Trading Agents Hackath
 ## ⚠️ Current Architecture Limitations (The Blunt Truths)
 
 Let's be real—this codebase serves as a fast-paced Hackathon prototype. If you fork this for personal, real-money trading projects, the following limitations and flaws must be addressed:
-1. **Messy Repo Structure**: Due to the hackathon rush, the Python backend scripts (`agent.py`, `trader.py`, `app.py`) and the Node `server.ts` are all dumped directly into the root directory instead of being neatly organized into `backend/` or `services/` folders. It needs a refactor before scaling.
-2. **LLM Hallucinations**: Language models trade on "textual sentiment" and cannot calculate Black-Scholes pricing or real-time Implied Volatility (IV). 
-3. **Slippage & Liquidity**: The pipeline submits Market/Limit orders without querying real-time Order Book depth, exposing trades to severe bid-ask slippage.
-4. **Execution Latency**: System latency makes it significantly slower than HFT algorithms which price news into premiums in milliseconds.
-5. **Rudimentary Risk Management**: The current risk gate lacks Portfolio Delta, Beta-Weighting, and Value at Risk (VaR) calculations.
-6. **No Exit Strategy**: The agent can enter positions but lacks automated Stop-Loss or Trailing-Stop mechanisms to exit them profitably.
+1. **LLM Hallucinations**: Language models trade on "textual sentiment" and cannot calculate Black-Scholes pricing or real-time Implied Volatility (IV). 
+2. **Slippage & Liquidity**: The pipeline submits Market/Limit orders without querying real-time Order Book depth, exposing trades to severe bid-ask slippage.
+3. **Execution Latency**: System latency makes it significantly slower than HFT algorithms which price news into premiums in milliseconds.
+4. **Rudimentary Risk Management**: The current risk gate lacks Portfolio Delta, Beta-Weighting, and Value at Risk (VaR) calculations.
+5. **No Exit Strategy**: The agent can enter positions but lacks automated Stop-Loss or Trailing-Stop mechanisms to exit them profitably.
 
 ---
 

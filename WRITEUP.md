@@ -38,12 +38,11 @@ To demonstrate flexibility, we built the architecture with dual-stack parity:
 ## 5. Architectural Flaws & The Blunt Truth
 
 Let's be real—building an options-trading AI taught us that LLMs are incredible at basic sentiment analysis but lack strict quantitative capabilities. Due to the hackathon constraints, this architecture has flaws. For any use beyond this hackathon, the following limitations must be addressed:
-1. **Messy Repo Structure**: Due to the hackathon rush, the Python backend scripts and the Node `server.ts` are all dumped directly into the root directory instead of being neatly organized into `backend/` or `services/` folders.
-2. **LLMs Cannot Do Math**: The AI cannot calculate Black-Scholes pricing, the Greeks (Delta, Gamma, Theta, Vega), or Implied Volatility crush.
-3. **Slippage**: We submit Market/Limit orders without considering Order Book depth or bid-ask spread, which is catastrophic in live options markets.
-4. **Execution Latency**: The pipeline is highly delayed compared to HFT algorithms.
-5. **No Exit Strategy**: The agent has logic to buy options, but zero logic to sell them (Take-Profit/Stop-Loss). Options will decay to zero if not manually managed.
-6. **Basic Risk**: The risk manager lacks Portfolio Delta and Value at Risk (VaR) calculations.
+1. **LLMs Cannot Do Math**: The AI cannot calculate Black-Scholes pricing, the Greeks (Delta, Gamma, Theta, Vega), or Implied Volatility crush.
+2. **Slippage**: We submit Market/Limit orders without considering Order Book depth or bid-ask spread, which is catastrophic in live options markets.
+3. **Execution Latency**: The pipeline is highly delayed compared to HFT algorithms.
+4. **No Exit Strategy**: The agent has logic to buy options, but zero logic to sell them (Take-Profit/Stop-Loss). Options will decay to zero if not manually managed.
+5. **Basic Risk**: The risk manager lacks Portfolio Delta and Value at Risk (VaR) calculations.
 
 **Next Steps for Real-World Usage:**
 - Refactor the codebase into a proper microservice folder structure.
